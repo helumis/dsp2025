@@ -59,8 +59,8 @@ c2020_sel <- c2020_sel %>% select(any_of(all_concepts))
 c2022_sel <- c2022_sel %>% select(any_of(all_concepts))
 
 # 合併
-final <- bind_rows(c2018_sel, c2020_sel, c2022_sel)
-
+starting_data <- bind_rows(c2018_sel, c2020_sel, c2022_sel)
+write.csv(starting_data, "starting_data.csv", row.names = FALSE, fileEncoding = "UTF-8")
 
 
 colnames(final)
@@ -98,9 +98,9 @@ final$年齡 <- ifelse(final$`訪問月` < final$`出生月`,
 write.csv(final, "final.csv", row.names = FALSE, fileEncoding = "UTF-8")
 
 colnames(final)
-#########################
+#################################
 
-
+#################################
 
 final <- read.csv("final.csv", header = TRUE, stringsAsFactors = FALSE)
 # 確認交叉樣本數
