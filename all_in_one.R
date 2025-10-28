@@ -39,7 +39,7 @@ if (!requireNamespace("ComplexHeatmap", quietly = TRUE)) {
 
 
 #資料取得與合併####
-# 設定資料夾位置
+# 設定資料夾位置需確認有C2022 C2020 C2018 合併編碼表的csv檔案####
 setwd("E:/學/DSP2025/data")
 
 # 確認目前工作目錄
@@ -558,7 +558,6 @@ colnames(df)
 #plot_missing_heatmap(df)
 #all_unique_values_set <- lapply(df, unique)
 #all_unique_values_set
-##進行差補######################################################################################
 #  資料遺失值差賭處理與混合效應模型分析#################
 #  包含：
 #    (1) 多重差補法 (MICE)
