@@ -4,6 +4,7 @@
 packages <- c("naniar", "tidyverse", "lme4", "lmerTest", "sjPlot","mice", "missForest","broom",
               "psych", "ggplot2", 
               #mac 丟掉"devtools", 
+              "rsample", "performance", "broom.mixed", "dplyr",
               "VIM", "dplyr", "grid", "readr","ggalluvial","haven")
 
 # 安裝未安裝的套件
@@ -16,6 +17,10 @@ for (pkg in packages) {
 
 
 # 讀入
+library(rsample)
+library(performance)
+library(broom.mixed)
+library(dplyr)
 library(haven)
 # 載入套件
 library(ggplot2)
@@ -491,10 +496,10 @@ color_map <- c(
 )
 
 label_map <- c(
-  "control_internet_bin_0" = "較常傾訴組",
-  "control_internet_bin_1" = "無/偶爾傾訴",
-  "talk_parent_bin_0" = "不管上網",
-  "talk_parent_bin_1" = "會管上網",
+  "control_internet_bin_0" = "不管上網",
+  "control_internet_bin_1" = "會管上網",
+  "talk_parent_bin_0" = "無/偶爾傾訴",
+  "talk_parent_bin_1" = "較常傾訴組",
   "int_time_bin_0" = "上網少於4小時",
   "int_time_bin_1" = "上網多於4小時",
   "total" = "全體平均"
@@ -567,8 +572,28 @@ summary(m3)
 gg <- ggpredict(m3, terms = c("control_internet_bin", "talk_parent_bin"))
 plot(gg) + labs(title="上網管制 × 傾訴對幸福感的交互作用", y="預測幸福感")
 gg2 <- ggpredict(m3, terms = c("intmind_mean_effect"))
-plot(gg2) + labs(title="心智面向與幸福感關係（限有測量年度）", y="預測幸福感")
-
+plot(gg2) + labs(title="網路行為分數與幸福感關係（限有測量年度）", y="預測幸福感")
+##網路受管控數值化
+m4 <- lmer(score_happiness ~ factor(surv_y) + int_time_bin +
+             control_internet * talk_parent_bin +
+             sex + age +
+             intmind_available:intmind_mean_effect +  # 只在有資料年份生效
+             (1 | id),
+           data = df, REML = FALSE)
+summary(m4)
+gg <- ggpredict(m4, terms = c("control_internet", "talk_parent_bin"))
+plot(gg) + labs(title="上網管制 × 傾訴對幸福感的交互作用", y="預測幸福感")
+###
+m5 <- lmer(score_happiness ~ 
+             factor(surv_y) * int_time_bin +
+             factor(surv_y) * talk_parent_bin +
+             factor(surv_y) * control_internet_bin +
+             control_internet_bin * talk_parent_bin +
+             sex + age +
+             intmind_available:intmind_mean_effect +  # 只在有資料年份生效
+             (1 | id),
+           data = df, REML = FALSE)
+summary(m5)
 #多重差補與混合效應模型####
 # -----------------------------
 # 0. 指定其他需差補欄位####
@@ -694,7 +719,7 @@ df_model_rf <- df_model_rf %>%
 fit_rf <- lmer(formula, data = df_model_rf, REML = FALSE)
 
 # -----------------------------
-# 10. 輸出結果####
+ㄌㄧ# 10. 輸出結果####
 cat("\n===== MICE 多重差補 + Rubin 合併結果 =====\n")
 print(pooled_table, digits = 3)
 
@@ -712,4 +737,88 @@ plot(gg2) + labs(title="心智面向與幸福感關係（限有測量年度）",
 all_unique_values_set <- lapply(df_imputed_rf, unique)
 all_unique_values_set
 summary(m3)
+summary(m4)
+summary(m5)
 summary(fit_rf)
+print(pooled_table, digits = 3)
+
+
+
+#交叉驗證####
+cv_lmer <- function(model_formula, data, k = 5, seed = 123) {
+  set.seed(seed)
+  
+  folds <- rsample::vfold_cv(data, v = k)
+  
+  results <- lapply(folds$splits, function(split) {
+    train_data <- rsample::analysis(split)
+    test_data  <- rsample::assessment(split)
+    
+    # 擬合模型
+    fit <- lme4::lmer(model_formula, data = train_data, REML = FALSE)
+    
+    # 預測
+    test_data$pred <- predict(fit, newdata = test_data, allow.new.levels = TRUE)
+    test_data$obs  <- test_data$score_happiness
+    
+    # 手動計算 RMSE、MAE、R²
+    RMSE <- sqrt(mean((test_data$pred - test_data$obs)^2, na.rm = TRUE))
+    MAE  <- mean(abs(test_data$pred - test_data$obs), na.rm = TRUE)
+    R2   <- 1 - sum((test_data$obs - test_data$pred)^2, na.rm = TRUE) /
+      sum((test_data$obs - mean(test_data$obs, na.rm = TRUE))^2, na.rm = TRUE)
+    
+    data.frame(RMSE = RMSE, MAE = MAE, R2 = R2)
+  })
+  
+  results_df <- dplyr::bind_rows(results)
+  return(colMeans(results_df, na.rm = TRUE))
+}
+#確保「受試者不重複」出現在不同折
+cv_lmer_grouped <- function(model_formula, data, group = "id", k = 5, seed = 123) {
+  set.seed(seed)
+  ids <- unique(data[[group]])
+  folds <- cut(seq_along(ids), breaks = k, labels = FALSE)
+  
+  results <- lapply(1:k, function(i) {
+    test_ids <- ids[folds == i]
+    train_data <- subset(data, !(data[[group]] %in% test_ids))
+    test_data  <- subset(data,  (data[[group]] %in% test_ids))
+    
+    fit <- lme4::lmer(model_formula, data = train_data, REML = FALSE)
+    test_data$pred <- predict(fit, newdata = test_data, allow.new.levels = TRUE)
+    
+    RMSE <- sqrt(mean((test_data$score_happiness - test_data$pred)^2, na.rm = TRUE))
+    MAE  <- mean(abs(test_data$score_happiness - test_data$pred), na.rm = TRUE)
+    R2   <- 1 - sum((test_data$score_happiness - test_data$pred)^2, na.rm = TRUE) /
+      sum((test_data$score_happiness - mean(test_data$score_happiness, na.rm = TRUE))^2, na.rm = TRUE)
+    
+    data.frame(RMSE = RMSE, MAE = MAE, R2 = R2)
+  })
+  
+  results_df <- dplyr::bind_rows(results)
+  return(colMeans(results_df, na.rm = TRUE))
+}
+#函數結果
+
+# m3
+cv_m3 <- cv_lmer(formula(m3), data = df, k = 5)
+# m4
+cv_m4 <- cv_lmer(formula(m4), data = df, k = 5)
+# m5
+cv_m5 <- cv_lmer(formula(m5), data = df, k = 5)
+# fit_rf
+cv_rf <- cv_lmer(formula(fit_rf), data = df_model_rf, k = 5)
+
+# 結果比較
+cv_results <- data.frame(
+  Model = c("m3", "m4", "m5", "fit_rf"),
+  RMSE = c(cv_m3["RMSE"], cv_m4["RMSE"], cv_m5["RMSE"], cv_rf["RMSE"]),
+  MAE  = c(cv_m3["MAE"],  cv_m4["MAE"],  cv_m5["MAE"],  cv_rf["MAE"]),
+  R2   = c(cv_m3["R2"],   cv_m4["R2"],   cv_m5["R2"],   cv_rf["R2"])
+)
+
+print(cv_results)
+cv_lmer_grouped(formula(m3), df)
+cv_lmer_grouped(formula(m4), df)
+cv_lmer_grouped(formula(m5), df)
+cv_lmer_grouped(formula(fit_rf), df_model_rf )
