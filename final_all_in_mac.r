@@ -21,7 +21,7 @@ library(haven)
 library(ggplot2)
 library(ggeffects)
 library(mice)
-library(missForest)
+library(missForest)ㄌㄌ
 library(VIM)
 #mac 丟掉
 #library(devtools)
@@ -108,8 +108,8 @@ c2022_sel <- c2022_sel %>% select(any_of(all_concepts))
 # 合併
 starting_data <- bind_rows(c2018_sel, c2020_sel, c2022_sel)
 #清理與整理####
-all_unique_values_set <- lapply(starting_data, unique)
-all_unique_values_set
+#all_unique_values_set <- lapply(starting_data, unique)
+#all_unique_values_set
 ####初步清理完全用不到的<差補需要考慮所以先留著>
 #cols_to_remove <- c( "residence" , "house_type"   ,"school_type","edu_2018","high_difficulty" 
 #                     , "high_rule","control_sleepover", "control_curfew", "control_appearance" ,"control_routine",
@@ -386,10 +386,10 @@ df <- binarize_numeric(df, vars =c("talk_parent"), threshold = 3.5, direction = 
 df <- binarize_numeric(df, vars =c("int_time"), threshold = 5.5, direction = "greater")
 df <- binarize_numeric(df, vars =c("control_internet"), threshold = 2.5, direction = "greater")
 df_list <- split(df, df$surv_y)
-summary(df_list[[1]])
-summary(df_list[[2]])
-summary(df_list[[3]])
-plot_missing_heatmap(df_list[[3]])
+#summary(df_list[[1]])
+#summary(df_list[[2]])
+#summary(df_list[[3]])
+#plot_missing_heatmap(df_list[[3]])
 #敘述統計與群體比較####
 #各年份二值化因子比例折線圖
 plot_multiple_yearly_mean <- function(df,
@@ -687,3 +687,10 @@ gg <- ggpredict(fit_rf, terms = c("control_internet_bin", "talk_parent_bin"))
 plot(gg) + labs(title="上網管制 × 傾訴對幸福感的交互作用", y="預測幸福感")
 gg2 <- ggpredict(fit_rf, terms = c("intmind_mean_effect"))
 plot(gg2) + labs(title="心智面向與幸福感關係（限有測量年度）", y="預測幸福感")
+
+
+#結果確認####
+all_unique_values_set <- lapply(df_imputed_rf, unique)
+all_unique_values_set
+summary(m3)
+summary(fit_rf)
